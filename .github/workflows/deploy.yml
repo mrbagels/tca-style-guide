@@ -1,0 +1,82 @@
+## ─────────────────────────────────────────────────────────────────────────
+## TCA Style Guide — Build & Deploy
+##
+## Triggers on push to main. Runs the build script to generate
+## LLM-optimized outputs, then deploys them to GitHub Pages.
+## ─────────────────────────────────────────────────────────────────────────
+
+name: Build & Deploy Style Guide
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: ## Allow manual trigger from GitHub UI
+
+## Sets permissions for GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+## Only allow one deployment at a time
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run build script
+        run: python3 scripts/build-llm-guide.py
+
+      - name: Prepare Pages artifact
+        run: |
+          ## Create a clean directory for GitHub Pages
+          mkdir -p _site
+
+          ## Copy all LLM-optimized outputs (primary + topic guides)
+          cp dist/*.md dist/*.txt _site/
+
+          ## Copy source docs for deep-linking
+          cp -r docs _site/docs
+
+          ## Copy pattern files for direct access
+          cp -r examples _site/examples
+
+          ## Create a minimal index.html that redirects to llms.txt
+          cat > _site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>TCA Style Guide</title>
+            <meta http-equiv="refresh" content="0; url=llms.txt">
+          </head>
+          <body>
+            <p>Redirecting to <a href="llms.txt">llms.txt</a>...</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
